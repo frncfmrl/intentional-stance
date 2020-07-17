@@ -1,1 +1,1 @@
-# intentionalityTests
+# intentional stance tests
