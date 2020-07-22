@@ -110,11 +110,10 @@ class funnel_simulation:
 ##################### SET UP SIMULATION  ######################
 
 nDots=3
-dt = 1/30 # 30fps
+dt = 1/100 # 30fps
 simulation = funnel_simulation(nDots)
 
-
-######################## CREATE MOVIE OF TRAJECTORIES #######################
+################### CREATE MOVIE OF TRAJECTORIES ###################
 
 fig = plt.figure()
 fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
@@ -143,7 +142,7 @@ def animate(i):
 
 ## update pieces of the animation
     rect.set_edgecolor('k')
-    particles.set_data(simulation.state[0,:], simulation.state[1,:])
+    particles.set_data(simulation.state[:,0], simulation.state[:,1])
     ms=8 # ms = int(fig.dpi * 2 * simulation.size * fig.get_figwidth() / np.diff(ax.get_xbound())[0])
     particles.set_markersize(ms)
     return(particles, rect)
@@ -187,9 +186,11 @@ ax.add_patch(rect)
 
 for n in range(nDots):
      plt.scatter(trajectories[n,0,:], trajectories[n,1,:])
-
-# also plot funnel:
 ys=np.arange(simulation.frame["yMin"], simulation.frame["yMax"],.05*(simulation.frame["yMax"]-simulation.frame["yMin"]))
 plt.plot(simulation.x_of_y(ys),ys, color='black', linestyle='solid')
 plt.plot(-simulation.x_of_y(ys),ys, color='black', linestyle='solid')
+plt.xlim(simulation.frame['xMin'], simulation.frame['xMax']) 
+plt.ylim(simulation.frame['yMin'], simulation.frame['yMax'])
+figureName= "../trajectories.png"
+plt.savefig(figureName, bbox_inches='tight')
  
