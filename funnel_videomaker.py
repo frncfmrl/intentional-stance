@@ -1,14 +1,24 @@
 # -*- coding: utf-8 -*-
 
 """
-Created on Mon Jul 20 12:30:34 2020
- 
+Created on Mon Jul 20 12:30:34 2020 
+Based on :  https://matplotlib.org/3.1.1/api/_as_gen/matplotlib.animation.FuncAnimation.html
+
+ Saves the animation as an mp4.  This requires ffmpeg or mencoder to be
+ installed.  The extra_args ensure that the x264 codec is used, so that
+ the video can be embedded in html5.  You may need to adjust this for
+ your system: for more information, see
+
+ http://matplotlib.sourceforge.net/api/animation_api.html
+     
 """
  
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from utilities import sign
+from datetime import datetime
+
          
 class funnel_simulation:
 
@@ -16,11 +26,11 @@ class funnel_simulation:
          
          self.nDots=num_of_dots
          
-         self.jitterRatio_x=0 #but differerent dots might jitter at a different noise level
-         self.jitterRatio_y=0
+         self.jitterRatio_x=.1 #but differerent dots might jitter at a different noise level
+         self.jitterRatio_y=.1
 
          self.frame = {
-            "yMin": -1.5,
+            "yMin": -.5,
             "yMax": 1.5,
             "xMin": -1,
             "xMax": +1,
@@ -67,8 +77,8 @@ class funnel_simulation:
     def evolve(self,r,dt,x_of_y,sig_x,sig_y):
           vx=-sign(r[0])*self.repulsion(self.x_of_y(r[1])-abs(r[0]))
           vy=-5
-          r[0]=r[0]+vx*dt+sig_x*np.random.randn(1)
-          r[1]=r[1]+vy*dt+sig_y*np.random.rand(1)
+          r[0]=r[0]+vx*dt+sig_x*np.random.randn(1)*np.sqrt(dt)
+          r[1]=r[1]+vy*dt+sig_y*np.random.rand(1)*np.sqrt(dt)
           return(r)
                                        
     def trajectory(self,nDots=1,dt=0.1,nSteps=100,sx=0,sy=0):
@@ -105,59 +115,77 @@ class funnel_simulation:
           #assert(abs(r[0,n,tn+1])<self.x_of_y([1,n,tn+1]))self.state[:, :2] += dt * self.state[:, 2:]
 
 
-#------------------------------------------------------------
-
 ##################### SET UP SIMULATION  ######################
 
-nDots=3
-dt = 1/100 # 30fps
+nDots=10
+dt = 1/500 # 30fps
 simulation = funnel_simulation(nDots)
 
 ################### CREATE MOVIE OF TRAJECTORIES ###################
 
 fig = plt.figure()
 fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
+
 ax = fig.add_subplot(111, aspect='equal', autoscale_on=False,
                      xlim=(simulation.frame['xMin'], simulation.frame['xMax']), 
                      ylim=(simulation.frame['yMin'], simulation.frame['yMax']))
 
+ax.axis('off')
+ax.set_xlim(simulation.frame['xMin'], simulation.frame['xMax'])
+ax.set_ylim(simulation.frame['yMin'], simulation.frame['yMax'])
+
+ys=np.arange(simulation.frame["yMin"], simulation.frame["yMax"],\
+             .05*(simulation.frame["yMax"]-simulation.frame["yMin"]))
+
+rightWall, =ax.plot([],[], color='black', linestyle='solid')
+leftWall, =ax.plot([],[], color='black', linestyle='solid')
+
 particles, = ax.plot([], [], 'bo', ms=6) # particles holds the locations of the particles
-rect = plt.Rectangle(simulation.bounds[::2],
-                     simulation.bounds[1] - simulation.bounds[0],
-                     simulation.bounds[3] - simulation.bounds[2],
-                     ec='none', lw=2, fc='none') # rect is the box edge
-ax.add_patch(rect)
+
 
 def init():
     """initialize animation"""
-    global simulation, rect
+    global simulation, particles, rightWall,leftWall
     particles.set_data([], [])
-    rect.set_edgecolor('none')
-    return(particles, rect)
+    rightWall.set_data([],[])    
+    rightWall.set_data([],[])    
+    return particles,rightWall, leftWall,
 
 def animate(i):
     """perform animation step"""
-    global simulation, rect, dt, ax, fig
+    #
+    global simulation, particles,rightWall, leftWall,dt, ax, fig, rightWall_xs, rightWall_ys,nFrames
     simulation.step(dt)
 
-## update pieces of the animation
-    rect.set_edgecolor('k')
+    #update dots    
     particles.set_data(simulation.state[:,0], simulation.state[:,1])
     ms=8 # ms = int(fig.dpi * 2 * simulation.size * fig.get_figwidth() / np.diff(ax.get_xbound())[0])
     particles.set_markersize(ms)
-    return(particles, rect)
+    
+    # update walls
+    if np.max(simulation.state[:,1])<(simulation.frame["yMin"]+simulation.frame["yMax"])/2:
+         rightWall.set_data(simulation.x_of_y(ys), ys)
+         leftWall.set_data(-simulation.x_of_y(ys), ys)
 
-nFrames=1000
-ani = animation.FuncAnimation(fig, animate, frames=nFrames, interval=10, blit=True, init_func=init)
-     
-# save the animation as an mp4.  This requires ffmpeg or mencoder to be
-# installed.  The extra_args ensure that the x264 codec is used, so that
-# the video can be embedded in html5.  You may need to adjust this for
-# your system: for more information, see
-# http://matplotlib.sourceforge.net/api/animation_api.html
+    return particles, rightWall,leftWall,
 
-ani.save('../funnel_video.mp4', fps=30, extra_args=['-vcodec', 'libx264'])
+#
+# Let's compute the numeber of Frames as the number of iteration after which all the dots are below the figure's edge
+# 
 
+nFrames=600
+ani = animation.FuncAnimation(fig, animate, np.arange(1, nFrames), init_func=init,interval=25, blit=True)
+
+#
+#ani = animation.FuncAnimation(fig, animate, frames=nFrames, interval=10, blit=True, init_func=init)
+# If blit == True, the "animate" function must return an iterable of all artists that were modified or created. 
+#
+
+timeNow=datetime.now()
+timestr=timeNow.strftime("%y%m%d_%H%M%S")
+videoName= "../outputs/funnelVideo_"+timestr+".mp4"
+
+ani.save(videoName, fps=30, extra_args=['-vcodec', 'libx264'])
 plt.show()
 
 ################## CREATE STATIC IMAGE OF TRAJECTORIES ############### 
@@ -177,20 +205,19 @@ fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
 ax = fig.add_subplot(111, aspect='equal', autoscale_on=False,
                      xlim=(simulation.frame['xMin'], simulation.frame['xMax']), 
                      ylim=(simulation.frame['yMin'], simulation.frame['yMax']))
-
-rect = plt.Rectangle(simulation.bounds[::2],
-                     simulation.bounds[1] - simulation.bounds[0],
-                     simulation.bounds[3] - simulation.bounds[2],
-                     ec='none', lw=2, fc='none') # rect is the box edge
-ax.add_patch(rect)
+ax.axis('off')
 
 for n in range(nDots):
      plt.scatter(trajectories[n,0,:], trajectories[n,1,:])
-ys=np.arange(simulation.frame["yMin"], simulation.frame["yMax"],.05*(simulation.frame["yMax"]-simulation.frame["yMin"]))
-plt.plot(simulation.x_of_y(ys),ys, color='black', linestyle='solid')
-plt.plot(-simulation.x_of_y(ys),ys, color='black', linestyle='solid')
-plt.xlim(simulation.frame['xMin'], simulation.frame['xMax']) 
-plt.ylim(simulation.frame['yMin'], simulation.frame['yMax'])
-figureName= "../trajectories.png"
-plt.savefig(figureName, bbox_inches='tight')
- 
+
+ys=np.arange(simulation.frame["yMin"], simulation.frame["yMax"],\
+             .05*(simulation.frame["yMax"]-simulation.frame["yMin"]))
+
+ax.plot(simulation.x_of_y(ys),ys, color='black', linestyle='solid')
+ax.plot(-simulation.x_of_y(ys),ys, color='black', linestyle='solid')
+
+ax.set_xlim(simulation.frame['xMin'], simulation.frame['xMax'])
+ax.set_ylim(simulation.frame['yMin'], simulation.frame['yMax'])
+
+#figureName= "../outputs/trajectories_"+timestr+".png"
+#plt.savefig(figureName, bbox_inches='tight')
