@@ -12,26 +12,29 @@ Based on :  https://matplotlib.org/3.1.1/api/_as_gen/matplotlib.animation.FuncAn
  http://matplotlib.sourceforge.net/api/animation_api.html
      
 """
- 
+
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from utilities import sign
 from datetime import datetime
 
-         
+#
+
 class funnel_simulation:
 
-    def __init__(self,num_of_dots):
+    def __init__(self,num_of_dots,theta):
          
+         assert(theta<360)
          self.nDots=num_of_dots
+         self.theta=theta*2*np.pi/360
          
          self.jitterRatio_x=.1 #but differerent dots might jitter at a different noise level
          self.jitterRatio_y=.1
 
          self.frame = {
-            "yMin": -.5,
-            "yMax": 1.5,
+            "yMin": -1, #-.5
+            "yMax": 1, # 1.5
             "xMin": -1,
             "xMax": +1,
             }
@@ -45,16 +48,34 @@ class funnel_simulation:
          self.init_state=np.empty((nDots,2))  #initialize
          self.init_state[:,0]=self.frame['xMin']+self.Lx*np.random.rand(nDots) 
          self.init_state[:,1]=self.frame['yMin']+self.Ly*np.random.rand(nDots)
+         
          for n in range(nDots):
               self.init_state[n,:]=self.keep_within(self.init_state[n,:])
-
+              self.init_state[n,:]=self.rotate(self.init_state[n,:])
+                            
          self.state = self.init_state.copy()
          self.time_elapsed = 0
          #tMax=3
          #self.r=self.trajectory(nDots=nDots,dt=dt,nSteps=int(np.floor(tMax/dt)),sx=sx,sy=sy)
 
+    def rotate(self,r):
+         R=np.zeros((2,2))
+         R[0,0]=np.cos(self.theta) 
+         R[0,1]=-np.sin(self.theta)
+         R[1,0]=np.sin(self.theta)
+         R[1,1]=np.cos(self.theta)
+         return(R@r)
+
+    def antirotate(self,r):
+         R=np.zeros((2,2))
+         R[0,0]=np.cos(self.theta) 
+         R[0,1]=np.sin(self.theta)
+         R[1,0]=-np.sin(self.theta)
+         R[1,1]=np.cos(self.theta)
+         return(R@r)
+         
     def x_of_y(self,y):
-          x= np.exp(y-1)
+          x= np.exp(y-0.5)
           return(x)
               
     def keep_within(self,r):
@@ -68,41 +89,48 @@ class funnel_simulation:
           plt.plot(self.x_of_y(ys),ys, color='black', linestyle='solid')
           plt.plot(-self.x_of_y(ys),ys, color='black', linestyle='solid')
           return()
-                             
+
     def repulsion(self,d):
           assert(d>=0) # argument is a distance so it must be positive
           v=1/(d+1)
           return(v)
-                                  
+
     def evolve(self,r,dt,x_of_y,sig_x,sig_y):
           vx=-sign(r[0])*self.repulsion(self.x_of_y(r[1])-abs(r[0]))
           vy=-5
           r[0]=r[0]+vx*dt+sig_x*np.random.randn(1)*np.sqrt(dt)
           r[1]=r[1]+vy*dt+sig_y*np.random.rand(1)*np.sqrt(dt)
           return(r)
-                                       
+
     def trajectory(self,nDots=1,dt=0.1,nSteps=100,sx=0,sy=0):
                                             
           # initializing the positions array
           r=np.empty((2,nDots,nSteps)) 
-          r[:,:,0]=self.init_state
+          r[:,:,0]=self.init_state                    
+          
           for n in range(nDots):
                r[n,:,0]=self.keep_within(r[n,:0])
                for tn in range(nSteps-1):
                     # print(tn)
-                    r[n,:,tn+1]=self.evolve(r[n,:,tn],dt,self.x_of_y,sx,sy)
+                    r[n,:,tn+1]=self.antirotate(r[n,:,tn])
+                    r[n,:,tn+1]=self.evolve(r[n,:,tn+1],dt,self.x_of_y,sx,sy)
                     r[n,:,tn+1]=self.keep_within(r[n,:,tn+1])
+                    r[n,:,tn+1]=self.rotate(r[n,:,tn+1])
                     #assert(abs(r[n,0,tn+1])<self.x_of_y([n,1,tn+1]))
                     
           return(r)
-           
-    def showManifold(self): 
-              
-         # ys=np.arange(frame["yMin"], frame["yMax"],.05*Ly)
-         # rightBorder = ax.plot(self.x_of_y(ys),ys, color='black',linestyle='solid')
-         # leftBorder = ax.plot(-self.x_of_y(ys),ys, color='black',linestyle='solid')
-         #plt.plot(r[0,0,:],r[1,0,:])
-         return()
+          
+    def manifold(self): 
+         
+         #ys=np.arange(self.frame["yMin"], self.frame["yMax"],.05*self.Ly)
+         ys=np.arange(-np.sqrt(2),np.sqrt(2),.05)
+
+         lWall=np.array([simulation.x_of_y(ys), ys])
+         rWall=np.array([-simulation.x_of_y(ys), ys])
+         lWall=self.rotate(lWall)
+         rWall=self.rotate(rWall)
+         
+         return(rWall[0],rWall[1],lWall[0],lWall[1])
       
     def step(self, dt):
        
@@ -110,114 +138,87 @@ class funnel_simulation:
          self.time_elapsed += dt
 
          for n in range(self.nDots):
+
+               self.state[n,:]=self.antirotate(self.state[n,:])
                self.state[n,:]=self.evolve(self.state[n,:],dt,self.x_of_y,self.sx,self.sy)
                self.state[n,:]=self.keep_within(self.state[n,:])
-          #assert(abs(r[0,n,tn+1])<self.x_of_y([1,n,tn+1]))self.state[:, :2] += dt * self.state[:, 2:]
+               self.state[n,:]=self.rotate(self.state[n,:])
+               #assert(abs(r[n,0,tn+1])<self.x_of_y([n,1,tn+1]))
 
+##################### DRAW MOVIE ######################
 
-##################### SET UP SIMULATION  ######################
-
-nDots=10
-dt = 1/500 # 30fps
-simulation = funnel_simulation(nDots)
-
-################### CREATE MOVIE OF TRAJECTORIES ###################
-
-fig = plt.figure()
-fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
-
-ax = fig.add_subplot(111, aspect='equal', autoscale_on=False,
-                     xlim=(simulation.frame['xMin'], simulation.frame['xMax']), 
-                     ylim=(simulation.frame['yMin'], simulation.frame['yMax']))
-
-ax.axis('off')
-ax.set_xlim(simulation.frame['xMin'], simulation.frame['xMax'])
-ax.set_ylim(simulation.frame['yMin'], simulation.frame['yMax'])
-
-ys=np.arange(simulation.frame["yMin"], simulation.frame["yMax"],\
-             .05*(simulation.frame["yMax"]-simulation.frame["yMin"]))
-
-rightWall, =ax.plot([],[], color='black', linestyle='solid')
-leftWall, =ax.plot([],[], color='black', linestyle='solid')
-
-particles, = ax.plot([], [], 'bo', ms=6) # particles holds the locations of the particles
-
-
-def init():
-    """initialize animation"""
-    global simulation, particles, rightWall,leftWall
-    particles.set_data([], [])
-    rightWall.set_data([],[])    
-    rightWall.set_data([],[])    
-    return particles,rightWall, leftWall,
-
-def animate(i):
-    """perform animation step"""
-    #
-    global simulation, particles,rightWall, leftWall,dt, ax, fig, rightWall_xs, rightWall_ys,nFrames
-    simulation.step(dt)
-
-    #update dots    
-    particles.set_data(simulation.state[:,0], simulation.state[:,1])
-    ms=8 # ms = int(fig.dpi * 2 * simulation.size * fig.get_figwidth() / np.diff(ax.get_xbound())[0])
-    particles.set_markersize(ms)
-    
-    # update walls
-    if np.max(simulation.state[:,1])<(simulation.frame["yMin"]+simulation.frame["yMax"])/2:
-         rightWall.set_data(simulation.x_of_y(ys), ys)
-         leftWall.set_data(-simulation.x_of_y(ys), ys)
-
-    return particles, rightWall,leftWall,
-
-#
-# Let's compute the numeber of Frames as the number of iteration after which all the dots are below the figure's edge
-# 
-
-nFrames=600
-ani = animation.FuncAnimation(fig, animate, np.arange(1, nFrames), init_func=init,interval=25, blit=True)
-
-#
-#ani = animation.FuncAnimation(fig, animate, frames=nFrames, interval=10, blit=True, init_func=init)
-# If blit == True, the "animate" function must return an iterable of all artists that were modified or created. 
-#
-
-timeNow=datetime.now()
-timestr=timeNow.strftime("%y%m%d_%H%M%S")
-videoName= "../outputs/funnelVideo_"+timestr+".mp4"
-
-ani.save(videoName, fps=30, extra_args=['-vcodec', 'libx264'])
-plt.show()
-
-################## CREATE STATIC IMAGE OF TRAJECTORIES ############### 
-
-simulation2 = funnel_simulation(nDots)
-trajectories=np.empty((nDots,2,nFrames)) 
+if __name__=="__main__":  
      
-for frameInd in range(nFrames):
-     trajectories[:,:,frameInd]=simulation2.state
-     #animate(frameInd)
-     simulation2.step(dt)
+     ## set up simulation 
+     nDots=10
+     dt = 1/500 # 30fps
+     angle=np.random.rand(1)[0]*360
      
-# plt.plot(trajectories[0,0,:])
+     ## set up movie
+     simulation = funnel_simulation(nDots,angle)
+     fig = plt.figure()
+     fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
      
-fig = plt.figure()
-fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
-ax = fig.add_subplot(111, aspect='equal', autoscale_on=False,
-                     xlim=(simulation.frame['xMin'], simulation.frame['xMax']), 
-                     ylim=(simulation.frame['yMin'], simulation.frame['yMax']))
-ax.axis('off')
+     ax = fig.add_subplot(111, aspect='equal', autoscale_on=False,
+                          xlim=(simulation.frame['xMin'], simulation.frame['xMax']), 
+                          ylim=(simulation.frame['yMin'], simulation.frame['yMax']))
+     
+     ax.axis('off')
+     ax.set_xlim(simulation.frame['xMin'], simulation.frame['xMax'])
+     ax.set_ylim(simulation.frame['yMin'], simulation.frame['yMax'])
+     
+     rightWall, =ax.plot([],[], color='black', linestyle='solid')
+     leftWall, =ax.plot([],[], color='black', linestyle='solid')
+     particles, = ax.plot([], [], 'bo', ms=6) # particles holds the locations of the particles
+     
+     def init():
+         """initialize animation"""
+         global simulation, particles,rightWall,leftWall
+         rightWall.set_data([],[])    
+         rightWall.set_data([],[])    
+         particles.set_data([], [])
+         return particles,rightWall,leftWall,
+     
+     def animate(i):
+     
+         """perform animation step"""
+         
+         global simulation,particles,rightWall,leftWall,dt,ax,fig,rightWall_xs,rightWall_ys,nFrames
+         simulation.step(dt)
+     
+         #update dots    
+         particles.set_data(simulation.state[:,0],simulation.state[:,1])
+         ms=8 # ms = int(fig.dpi * 2 * simulation.size * fig.get_figwidth() / np.diff(ax.get_xbound())[0])
+         particles.set_markersize(ms)
+         
+         # update walls
 
-for n in range(nDots):
-     plt.scatter(trajectories[n,0,:], trajectories[n,1,:])
-
-ys=np.arange(simulation.frame["yMin"], simulation.frame["yMax"],\
-             .05*(simulation.frame["yMax"]-simulation.frame["yMin"]))
-
-ax.plot(simulation.x_of_y(ys),ys, color='black', linestyle='solid')
-ax.plot(-simulation.x_of_y(ys),ys, color='black', linestyle='solid')
-
-ax.set_xlim(simulation.frame['xMin'], simulation.frame['xMax'])
-ax.set_ylim(simulation.frame['yMin'], simulation.frame['yMax'])
-
-#figureName= "../outputs/trajectories_"+timestr+".png"
-#plt.savefig(figureName, bbox_inches='tight')
+         unrotated_yMax=-100
+         for n in range(simulation.nDots):
+              ss=simulation.antirotate(simulation.state[n,:])
+              unrotated_yMax=np.max((unrotated_yMax,ss[1]))
+              
+         if unrotated_yMax<(simulation.frame["yMin"]+simulation.frame["yMax"])/2:
+              rWall_x,rWall_y,lWall_x,lWall_y=simulation.manifold()
+              rightWall.set_data(rWall_x,rWall_y)
+              leftWall.set_data(lWall_x,lWall_y)
+              
+         return particles,rightWall,leftWall,
+     
+          # To add: Let's compute the numeber of Frames as the number of iteration after which all the dots are below the figure's edge
+     
+         ## make and save video
+     
+     nFrames=600
+     ani = animation.FuncAnimation(fig,animate,np.arange(1, nFrames),init_func=init,interval=25,blit=True)
+     
+     #ani = animation.FuncAnimation(fig,animate,frames=nFrames,interval=10,blit=True,init_func=init)
+     # If blit == True, the "animate" function must return an iterable of all artists that were modified or created. 
+     
+     timeNow=datetime.now()
+     timestr=timeNow.strftime("%y%m%d_%H%M%S")
+     videoName= "../outputs/funnelVideo_"+timestr+".mp4"
+     
+     ani.save(videoName, fps=30, extra_args=['-vcodec', 'libx264'])
+     
+# might add the functionality to make the external border of the movie circular. 
