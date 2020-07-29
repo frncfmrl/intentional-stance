@@ -7,13 +7,17 @@ Created on Mon Jul 27 20:30:36 2020
 ################## CREATE STATIC IMAGE OF TRAJECTORIES ############### 
 
 
-
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from datetime import datetime
 from funnel_videomaker import funnel_simulation
-     
+
+
+nDots=10
+nFrames=400
+dt=.01
+
 simulation= funnel_simulation(nDots,0)
 trajectories=np.empty((nDots,2,nFrames)) 
      
